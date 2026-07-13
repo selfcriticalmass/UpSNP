@@ -62,14 +62,17 @@ def resolve_via_entrez(rsid_list):
 def _extract_spdi_coords(data):
     placements = data.get("primary_snapshot_data", {}).get("placements_with_allele", [])
     for p in placements:
+        if not p.get("is_ptlp"):
+            continue
         seq = p.get("seq_id", "")
-        if seq.startswith("NC_"):
-            alleles = p.get("alleles", [])
-            if alleles:
-                spdi = alleles[0].get("allele", {}).get("spdi", {})
-                pos = spdi.get("position")
-                if pos is not None:
-                    return f"{seq}:{pos}"
+        if not seq.startswith("NC_"):
+            continue
+        alleles = p.get("alleles", [])
+        if alleles:
+            spdi = alleles[0].get("allele", {}).get("spdi", {})
+            pos = spdi.get("position")
+            if pos is not None:
+                return f"{seq}:{pos}"
     return "Unknown"
 
 def resolve_via_variation_api(rsid_list):
