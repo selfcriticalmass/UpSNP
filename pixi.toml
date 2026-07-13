@@ -1,0 +1,10 @@
+[workspace]
+authors = ["Rijanhastwoears <Rijan9973@gmail.com>"]
+channels = ["conda-forge"]
+name = "snptracker_run"
+platforms = ["osx-arm64"]
+version = "0.1.0"
+
+[tasks]
+
+[dependencies]

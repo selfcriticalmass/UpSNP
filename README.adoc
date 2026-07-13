@@ -1,0 +1,79 @@
+= rsID Updater
+
+Resolve legacy/merged rsIDs to their current canonical IDs and genomic coordinates via NCBI APIs.
+
+== Problem
+
+dbSNP periodically merges or deprecates RefSNP clusters. An rsID that existed in build 150 may have been merged into a different canonical ID in build 157. Tracking hundreds of such changes manually is impractical.
+
+== Solution
+
+`update_rsids.py` accepts a list of legacy rsIDs, queries NCBI's APIs, and outputs a TSV mapping each legacy ID to its current canonical ID, genomic coordinates, and merge status.
+
+== Dependencies
+
+=== Runtime
+Python 3.x standard library only (no third-party packages). Runs anywhere Python 3 does.
+
+=== API (external — the real dependency)
+The program depends on two NCBI web services that must be reachable:
+
+* **NCBI E-utilities** (`eutils.ncbi.nlm.nih.gov`) – batch SNP summary queries. No auth required. Stable since 2004, but subject to NCBI's usage policies and rate limits (>3 req/s without an API key may be throttled).
+* **NCBI Variation Services API** (`api.ncbi.nlm.nih.gov`) – per-rsID RefSNP lookups with SPDI coordinates. No auth required. Newer service; endpoint paths may evolve.
+
+If either API changes its response schema, moves endpoints, or requires authentication in the future, the script will break. Monitor https://ncbiinsights.ncbi.nlm.nih.gov/ for service announcements.
+
+== Usage
+
+Create a text file with one rsID per line (see `example_data/historical_rsids.txt`):
+
+....
+python3 update_rsids.py -i example_data/historical_rsids.txt -o example_data/manifest.tsv
+....
+
+Expected output is shown in `example_data/manifest.tsv`.
+
+=== Options
+
+[options="header"]
+|===
+| Flag | Default | Description
+| `-i` / `--input` | `historical_rsids.txt` | Input file, one rsID per line (with or without `rs` prefix)
+| `-o` / `--output` | `updated_rsids_manifest.tsv` | Output TSV with columns: Legacy_rsID, Latest_rsID, Coordinates, Status
+| `--method` | `entrez` | API backend: `entrez` (E-utilities, batch, fast) or `variation` (per-ID, SPDI coords)
+|===
+
+=== Output columns
+
+* `Legacy_rsID` – your input rsID
+* `Latest_rsID` – current canonical rsID (same if unchanged, new if merged, `Not_Found_Or_Deleted` if withdrawn)
+* `Coordinates` – genomic position: `chr:1-based-pos` (entrez) or `RefSeq:0-based-pos` (variation)
+* `Status` – `Unchanged`, `Merged`, or `Withdrawn`
+
+=== Method comparison
+
+[options="header"]
+|===
+| Feature | `entrez` | `variation`
+| Batch size | Up to 200 IDs per request | 1 ID per request
+| Coordinate format | `chr:1-based-pos` (e.g. `11:27658369`) | `RefSeq:0-based-pos` (e.g. `NC_000011.10:27658368`)
+| Merged rsID handling | Auto-resolved | Follow-up query (handled internally)
+| Transcript-level coords | No | Yes (via `placements_with_allele`)
+| Speed | Fast | ~2× slower (per-ID queries + follow-ups)
+|===
+
+== Examples
+
+....
+# Quick batch lookup via E-utilities
+python3 update_rsids.py -i my_rsids.txt -o results.tsv
+
+# SPDI-precise coordinates via Variation API
+python3 update_rsids.py -i my_rsids.txt -o results.tsv --method variation
+....
+
+== Notes
+
+* Rate-limiting: 0.3s (entrez) / 0.5s (variation) delays between requests are built in.
+* Withdrawn rsIDs (HTTP 404) are flagged as `Withdrawn`.
+* Merged rsIDs are followed to the current canonical ID; coordinates of the target ID are reported.
