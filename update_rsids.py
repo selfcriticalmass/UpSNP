@@ -155,10 +155,10 @@ if __name__ == "__main__":
     resolver = resolve_via_entrez if args.method == "entrez" else resolve_via_variation_api
     updated_map = resolver(legacy_ids)
 
-    with open(args.output, "w") as out:
+    with open(args.output, "w", newline="") as out:
         if rows is not None:
             out_fieldnames = list(fieldnames) + ["Latest_rsID", "Coordinates", "Status"]
-            writer = csv.DictWriter(out, fieldnames=out_fieldnames, delimiter="\t")
+            writer = csv.DictWriter(out, fieldnames=out_fieldnames, delimiter="\t", lineterminator="\n")
             writer.writeheader()
             for row, raw in zip(rows, legacy_ids):
                 norm = normalize(raw)
