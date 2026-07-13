@@ -25,7 +25,7 @@ If either API changes its response schema, moves endpoints, or requires authenti
 
 == Usage
 
-Create a text file with one rsID per line (see `example_data/historical_rsids.txt`):
+=== Flat list (one rsID per line)
 
 ....
 python3 update_rsids.py -i example_data/historical_rsids.txt -o example_data/manifest.tsv
@@ -33,19 +33,31 @@ python3 update_rsids.py -i example_data/historical_rsids.txt -o example_data/man
 
 Expected output is shown in `example_data/manifest.tsv`.
 
+=== Multi-column TSV
+
+If your data already has sample IDs, cohorts, or other metadata alongside rsIDs, pass a TSV with a header row. By default the first column is used as the rsID column; specify a different column with `--rsid-column`:
+
+....
+python3 update_rsids.py -i example_data/cohort_snps.tsv -o results.tsv
+python3 update_rsids.py -i example_data/cohort_snps.tsv -o results.tsv --rsid-column sample_id
+....
+
+Original columns are preserved; `Latest_rsID`, `Coordinates`, and `Status` are appended.
+
 === Options
 
 [options="header"]
 |===
 | Flag | Default | Description
-| `-i` / `--input` | `historical_rsids.txt` | Input file, one rsID per line (with or without `rs` prefix)
-| `-o` / `--output` | `updated_rsids_manifest.tsv` | Output TSV with columns: Legacy_rsID, Latest_rsID, Coordinates, Status
+| `-i` / `--input` | `historical_rsids.txt` | Input: flat list (one rsID per line) or TSV with header row
+| `-o` / `--output` | `updated_rsids_manifest.tsv` | Output TSV
 | `--method` | `entrez` | API backend: `entrez` (E-utilities, batch, fast) or `variation` (per-ID, SPDI coords)
+| `--rsid-column` | (first column) | Column name containing rsIDs in a TSV with header
 |===
 
 === Output columns
 
-* `Legacy_rsID` – your input rsID
+* `Legacy_rsID` – your input rsID (only in flat-list mode; for TSV input the original column name is kept)
 * `Latest_rsID` – current canonical rsID (same if unchanged, new if merged, `Not_Found_Or_Deleted` if withdrawn)
 * `Coordinates` – genomic position: `chr:1-based-pos` (entrez) or `RefSeq:0-based-pos` (variation)
 * `Status` – `Unchanged`, `Merged`, or `Withdrawn`
@@ -65,8 +77,14 @@ Expected output is shown in `example_data/manifest.tsv`.
 == Examples
 
 ....
-# Quick batch lookup via E-utilities
+# Flat list
 python3 update_rsids.py -i my_rsids.txt -o results.tsv
+
+# Multi-column TSV using first column
+python3 update_rsids.py -i data.tsv -o results.tsv
+
+# Multi-column TSV using a named column
+python3 update_rsids.py -i data.tsv -o results.tsv --rsid-column variant_id
 
 # SPDI-precise coordinates via Variation API
 python3 update_rsids.py -i my_rsids.txt -o results.tsv --method variation

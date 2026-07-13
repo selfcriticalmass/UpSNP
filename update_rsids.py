@@ -4,6 +4,7 @@ import json
 import time
 import re
 import sys
+import csv
 
 EUTILS_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi"
 VARIATION_URL = "https://api.ncbi.nlm.nih.gov/variation/v0/refsnp/"
@@ -94,22 +95,55 @@ def resolve_via_variation_api(rsid_list):
         time.sleep(0.5)
     return results
 
+def classify(new_id, qk):
+    if new_id == qk:
+        return "Unchanged"
+    elif new_id == "Not_Found_Or_Deleted":
+        return "Withdrawn"
+    return "Merged"
+
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(
-        description="Map legacy rsIDs to current canonical rsIDs with coordinates via NCBI APIs")
+        description="Map legacy rsIDs to current canonical IDs with coordinates via NCBI APIs")
     parser.add_argument("-i", "--input", default="historical_rsids.txt",
-                        help="Input file, one rsID per line")
+                        help="Input file: flat list (one rsID per line) or TSV with headers")
     parser.add_argument("-o", "--output", default="updated_rsids_manifest.tsv",
                         help="Output TSV file")
     parser.add_argument("--method", choices=["entrez", "variation"], default="entrez",
                         help="API: 'entrez' (E-utilities, batch) or 'variation' (per-ID)")
+    parser.add_argument("--rsid-column", default=None,
+                        help="Name of the column containing rsIDs in a TSV with header. "
+                             "If omitted, the first column is used for TSV input, "
+                             "or each line is treated as a raw rsID for flat lists.")
     parser.add_argument("--assembly", default=None,
-                        help="Filter to a specific RefSeq assembly accession prefix (e.g. NC_000011 for chr11)")
+                        help="Filter to a specific RefSeq assembly accession prefix")
     args = parser.parse_args()
 
     with open(args.input) as f:
-        legacy_ids = [line.strip() for line in f if line.strip()]
+        first = f.readline()
+        f.seek(0)
+
+        is_tsv = "\t" in first.strip()
+
+        if is_tsv:
+            reader = csv.DictReader(f, delimiter="\t")
+            if args.rsid_column:
+                if args.rsid_column not in reader.fieldnames:
+                    print(f"Error: column '{args.rsid_column}' not found. "
+                          f"Available: {reader.fieldnames}", file=sys.stderr)
+                    sys.exit(1)
+                col = args.rsid_column
+            else:
+                col = reader.fieldnames[0]
+            print(f"Using column '{col}' for rsIDs", file=sys.stderr)
+            rows = list(reader)
+            legacy_ids = [row[col] for row in rows]
+            fieldnames = reader.fieldnames
+        else:
+            legacy_ids = [line.strip() for line in f if line.strip()]
+            rows = None
+            fieldnames = None
 
     if not legacy_ids:
         print("No rsIDs found.", file=sys.stderr)
@@ -122,19 +156,26 @@ if __name__ == "__main__":
     updated_map = resolver(legacy_ids)
 
     with open(args.output, "w") as out:
-        out.write("Legacy_rsID\tLatest_rsID\tCoordinates\tStatus\n")
-        for old_id in legacy_ids:
-            norm = normalize(old_id)
-            qk = f"rs{norm}"
-            entry = updated_map.get(qk, {"latest_id": "Not_Found_Or_Deleted", "coords": "Unknown"})
-            new_id = entry["latest_id"]
-            coords = entry.get("coords", "Unknown")
-            if new_id == qk:
-                status = "Unchanged"
-            elif new_id == "Not_Found_Or_Deleted":
-                status = "Withdrawn"
-            else:
-                status = "Merged"
-            out.write(f"{old_id}\t{new_id}\t{coords}\t{status}\n")
+        if rows is not None:
+            out_fieldnames = list(fieldnames) + ["Latest_rsID", "Coordinates", "Status"]
+            writer = csv.DictWriter(out, fieldnames=out_fieldnames, delimiter="\t")
+            writer.writeheader()
+            for row, raw in zip(rows, legacy_ids):
+                norm = normalize(raw)
+                qk = f"rs{norm}"
+                entry = updated_map.get(qk, {"latest_id": "Not_Found_Or_Deleted", "coords": "Unknown"})
+                row["Latest_rsID"] = entry["latest_id"]
+                row["Coordinates"] = entry.get("coords", "Unknown")
+                row["Status"] = classify(entry["latest_id"], qk)
+                writer.writerow(row)
+        else:
+            out.write("Legacy_rsID\tLatest_rsID\tCoordinates\tStatus\n")
+            for raw in legacy_ids:
+                norm = normalize(raw)
+                qk = f"rs{norm}"
+                entry = updated_map.get(qk, {"latest_id": "Not_Found_Or_Deleted", "coords": "Unknown"})
+                new_id = entry["latest_id"]
+                coords = entry.get("coords", "Unknown")
+                out.write(f"{raw}\t{new_id}\t{coords}\t{classify(new_id, qk)}\n")
 
     print(f"Done -> {args.output}", file=sys.stderr)
