@@ -1,0 +1,6 @@
+sample_id	cohort	population	phenotype
+rs3829232	COHORT_A	CEU	control
+rs16917222	COHORT_A	CEU	control
+rs113993960	COHORT_B	YRI	case
+rs6265	COHORT_B	YRI	case
+rs7412	COHORT_C	CHB	control
